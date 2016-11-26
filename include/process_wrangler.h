@@ -25,12 +25,29 @@ SOFTWARE.
 #ifndef __PROCESS_WRANGLER_H__
 #define __PROCESS_WRANGLER_H__
 
+#include <stdint.h>
+
 #ifdef _WIN32
 #define SYMBOL_EXPORT __declspec(dllexport)
 #else
 #define SYMBOL_EXPORT
 #endif
 
+#define PW_MAX_PROCESSES 0x8000
+#define PW_PROCESS_NAME_LENGTH 260
+
+typedef struct
+{
+  uint32_t id;
+  uint32_t numThreads;
+  uint64_t workingSetSize;
+  char name[ PW_PROCESS_NAME_LENGTH ];
+
+} PW_Process;
+
 SYMBOL_EXPORT extern int PW_Initialize(void);
+SYMBOL_EXPORT extern int PW_UpdateProcessList( void );
+SYMBOL_EXPORT extern int PW_GetProcessList( PW_Process *processes, uint32_t count );
+SYMBOL_EXPORT extern void PW_ClearProcessList();
 
 #endif /* __PROCESS_WRANGLER_H__ */
