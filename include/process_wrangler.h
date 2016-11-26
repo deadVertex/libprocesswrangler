@@ -27,11 +27,7 @@ SOFTWARE.
 
 #include <stdint.h>
 
-#ifdef _WIN32
-#define SYMBOL_EXPORT __declspec(dllexport)
-#else
-#define SYMBOL_EXPORT
-#endif
+#include "pw_error.h"
 
 #define PW_MAX_PROCESSES 0x8000
 #define PW_PROCESS_NAME_LENGTH 260

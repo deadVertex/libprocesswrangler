@@ -1,8 +1,7 @@
 #include <greatest/greatest.h>
 
 #include "process_wrangler.h"
-
-#include <Windows.h>
+#include "process_wrangler.c"
 
 /* Test cases */
 TEST InitializationIsSuccessful()
@@ -37,96 +36,6 @@ TEST ClearProcessList()
   ASSERT_EQ( 0, PW_GetProcessList( processes, count ) );
   free( processes );
   PASS();
-}
-
-#define PW_ERROR_MESSAGE_LENGTH 320
-#define PW_PLATFORM_ERROR_MESSAGE_LENGTH 200
-#define PW_ERROR_QUEUE_LENGTH 8
-
-typedef struct
-{
-  int code;
-  uint32_t line;
-  char *file;
-  char *function;
-  char message[ PW_ERROR_MESSAGE_LENGTH ];
-} PW_Error;
-
-enum
-{
-  PW_ERROR_NONE = 0,
-  PW_ERROR_INVALID_ARGUMENT = 1,
-  PW_ERROR_INTERNAL,
-};
-
-static const char* PW_GetErrorMessageFromPlatform()
-{
-  static char errorMessage[ PW_PLATFORM_ERROR_MESSAGE_LENGTH ];
-
-  DWORD errorId = GetLastError();
-  if ( errorId != 0 )
-  {
-    LPSTR messageBuffer = NULL;
-    size_t size = FormatMessage( FORMAT_MESSAGE_ALLOCATE_BUFFER | 
-                                 FORMAT_MESSAGE_FROM_SYSTEM     | 
-                                 FORMAT_MESSAGE_IGNORE_INSERTS,
-                                 NULL, errorId, MAKELANGID( LANG_NEUTRAL, SUBLANG_DEFAULT ),
-                                 ( LPSTR )&messageBuffer, 0, NULL );
-
-    strncpy( errorMessage, messageBuffer, min(size, PW_PLATFORM_ERROR_MESSAGE_LENGTH) );
-    LocalFree( messageBuffer );
-
-    return errorMessage;
-  }
-
-  return "";
-}
-
-static uint32_t g_errorCount = 0;
-static uint32_t g_errorQueueHead = 0;
-static uint32_t g_errorQueueTail = 0;
-static PW_Error g_errorQueue[ PW_ERROR_QUEUE_LENGTH ];
-
-uint32_t PW_GetErrorCount()
-{
-  return g_errorCount;
-}
-
-void PW_PushError( int errorCode, const char *message )
-{
-  PW_Error *nextError = g_errorQueue + g_errorQueueTail;
-  nextError->code = errorCode;
-  strncpy( nextError->message, message, sizeof( nextError->message ) );
-
-  g_errorQueueTail = ( g_errorQueueTail + 1 ) % PW_ERROR_QUEUE_LENGTH;
-  g_errorCount++;
-}
-
-int PW_GetError( PW_Error *error )
-{
-  if ( error == NULL )
-  {
-    return PW_ERROR_INVALID_ARGUMENT;
-  }
-
-  if ( g_errorCount > 0 )
-  {
-    *error = g_errorQueue[ g_errorQueueHead ];
-    g_errorQueueHead = ( g_errorQueueHead + 1 ) % PW_ERROR_QUEUE_LENGTH;
-    g_errorCount--;
-  }
-  else
-  {
-    memset( error, 0, sizeof( *error ) );
-  }
-  return PW_ERROR_NONE;
-}
-
-void PW_ClearErrors()
-{
-  g_errorCount = 0;
-  g_errorQueueHead = 0;
-  g_errorQueueTail = 0;
 }
 
 TEST ErrorCountIsZeroIfNoErrorHasOccurred()

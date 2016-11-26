@@ -2,6 +2,8 @@
 
 #include <stdint.h>
 
+#include "pw_error.c"
+
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <TlHelp32.h>
@@ -26,19 +28,36 @@ int PW_Initialize(void)
 
 static void DestroyProcessInfo( PW_ProcessInfo *processInfo )
 {
-  CloseHandle( processInfo->handle );
+  if ( processInfo->handle != NULL )
+  {
+    if ( CloseHandle( processInfo->handle ) == FALSE )
+    {
+      PW_PushError( PW_ERROR_INTERNAL, "CloseHandle failed. %s", PW_GetErrorMessageFromPlatform() );
+    }
+  }
 }
 
 static void InitializeProcessInfo( PW_ProcessInfo *processInfo, PROCESSENTRY32 *processEntry )
 {
+  memset( processInfo, 0, sizeof( *processInfo ) );
   processInfo->id = processEntry->th32ProcessID;
   processInfo->numThreads = processEntry->cntThreads;
   strncpy( processInfo->name, processEntry->szExeFile, sizeof( processInfo->name ) );
-  processInfo->handle = OpenProcess( PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_DUP_HANDLE, FALSE, processInfo->id );
-  PROCESS_MEMORY_COUNTERS_EX memoryCounters;
-  // TODO: Check for error
-  GetProcessMemoryInfo( processInfo->handle, &memoryCounters, sizeof( memoryCounters ) );
-  processInfo->workingSetSize = memoryCounters.WorkingSetSize;
+  if ( processInfo->id != 0 )
+  {
+    processInfo->handle = OpenProcess( PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_DUP_HANDLE, FALSE, processInfo->id );
+    if ( processInfo->handle != NULL )
+    {
+      PROCESS_MEMORY_COUNTERS_EX memoryCounters;
+      // TODO: Check for error
+      GetProcessMemoryInfo( processInfo->handle, &memoryCounters, sizeof( memoryCounters ) );
+      processInfo->workingSetSize = memoryCounters.WorkingSetSize;
+    }
+    else
+    {
+      // Most likely a system process that we don't have access to
+    }
+  }
 }
 
 int PW_UpdateProcessList( void )
@@ -50,7 +69,7 @@ int PW_UpdateProcessList( void )
   HANDLE snapshot = CreateToolhelp32Snapshot( TH32CS_SNAPPROCESS, 0 );
   if ( snapshot == INVALID_HANDLE_VALUE )
   {
-    //SetErrorMessage( "CreateToolhelp32Snapshot failed" );
+    PW_PushError( PW_ERROR_INTERNAL, "CreateToolhelp32Snapshot failed. %s", PW_GetErrorMessageFromPlatform() );
     return -1;
   }
   PROCESSENTRY32 processEntry;
@@ -103,3 +122,4 @@ void PW_ClearProcessList()
   }
   g_numProcesses = 0;
 }
+
