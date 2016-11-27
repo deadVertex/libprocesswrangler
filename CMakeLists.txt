@@ -5,6 +5,6 @@ include_directories( "src" "include" "thirdparty" )
 
 if( MSVC )
   add_executable( unit_tests "test/main.c" )
-  add_library( process_wrangler SHARED "src/process_wrangler.c" )
+  add_library( libprocesswrangler SHARED "src/process_wrangler.c" )
   #target_link_libraries( libres Pdh )
 endif()
