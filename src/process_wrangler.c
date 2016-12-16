@@ -9,7 +9,7 @@
 #include <TlHelp32.h>
 #include <Psapi.h>
 
-typedef struct 
+typedef struct
 {
   uint64_t workingSetSize;
   HANDLE handle;
@@ -21,7 +21,7 @@ typedef struct
 static PW_ProcessInfo g_processes[ PW_MAX_PROCESSES ];
 static uint32_t g_numProcesses;
 
-int PW_Initialize(void)
+int PW_Initialize( void )
 {
   return 0;
 }
@@ -123,3 +123,92 @@ void PW_ClearProcessList()
   g_numProcesses = 0;
 }
 
+// http://www.drdobbs.com/a-safer-alternative-to-terminateprocess/
+static BOOL SafeTerminateProcess( HANDLE processHandle, UINT exitCode)
+{
+  DWORD threadId, currentExitCode;
+  HANDLE duplicatedProcessHandle = INVALID_HANDLE_VALUE;
+  HANDLE threadHandle = NULL;
+  HINSTANCE kernelHandle = GetModuleHandle( "Kernel32" );
+  BOOL result = FALSE;
+
+  BOOL wasDuplicationSuccessful = DuplicateHandle( GetCurrentProcess(),
+                                                   processHandle,
+                                                   GetCurrentProcess(),
+                                                   &duplicatedProcessHandle,
+                                                   PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION,
+                                                   FALSE,
+                                                   0 );
+  if ( wasDuplicationSuccessful )
+  {
+    if ( GetExitCodeProcess( duplicatedProcessHandle, &currentExitCode ) )
+    {
+      if ( currentExitCode == STILL_ACTIVE )
+      {
+        FARPROC exitFunction;
+        exitFunction = GetProcAddress( kernelHandle, "ExitProcess" );
+        if ( exitFunction )
+        {
+          threadHandle = CreateRemoteThread( duplicatedProcessHandle, NULL, 0, ( LPTHREAD_START_ROUTINE )exitFunction, ( PVOID )exitCode, 0, &threadId );
+          if ( threadHandle )
+          {
+            // TODO: Fallback to TerminateProcess after period of time
+            WaitForSingleObject( duplicatedProcessHandle, INFINITE );
+            CloseHandle( threadHandle );
+            result = TRUE;
+          }
+          else
+          {
+            PW_PushError( PW_ERROR_INTERNAL, "CreateRemoteThread failed. %s", PW_GetErrorMessageFromPlatform() );
+          }
+        }
+        else
+        {
+          PW_PushError( PW_ERROR_INTERNAL, "GetProcessAddress failed. %s", PW_GetErrorMessageFromPlatform() );
+        }
+      }
+    }
+    else
+    {
+      PW_PushError( PW_ERROR_INTERNAL, "GetExitCodeProcess failed. %s", PW_GetErrorMessageFromPlatform() );
+    }
+    CloseHandle( duplicatedProcessHandle );
+  }
+  else
+  {
+    PW_PushError( PW_ERROR_INTERNAL, "Failed to duplicate process. %s", PW_GetErrorMessageFromPlatform() );
+  }
+  return result;
+}
+
+int PW_KillProcesses( uint32_t *processIds, uint32_t count )
+{
+  int found = 0;
+  int result = 0;
+  for ( uint32_t pidIdx = 0; pidIdx < count; ++pidIdx )
+  {
+    found = 0;
+    for ( uint32_t processIdx = 0; processIdx < g_numProcesses; ++processIdx )
+    {
+      if ( g_processes[ processIdx ].id == processIds[ pidIdx ] )
+      {
+        found = 1;
+        if ( SafeTerminateProcess( g_processes[ processIdx ].handle, 0 ) )
+        {
+          result++;
+        }
+        else
+        {
+          PW_PushError( PW_ERROR_INTERNAL, "Failed to safely terminate process %d.", processIds[ pidIdx ] );
+        }
+        break;
+      }
+    }
+    if ( !found )
+    {
+      PW_PushError( PW_ERROR_INVALID_ARGUMENT, "Unable to find process with PID %d.", processIds[ pidIdx ] );
+    }
+  }
+
+  return result;
+}

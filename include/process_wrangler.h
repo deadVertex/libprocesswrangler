@@ -45,5 +45,6 @@ SYMBOL_EXPORT extern int PW_Initialize(void);
 SYMBOL_EXPORT extern int PW_UpdateProcessList( void );
 SYMBOL_EXPORT extern int PW_GetProcessList( PW_Process *processes, uint32_t count );
 SYMBOL_EXPORT extern void PW_ClearProcessList();
+SYMBOL_EXPORT extern int PW_KillProcesses( uint32_t *processIds, uint32_t count );
 
 #endif /* __PROCESS_WRANGLER_H__ */

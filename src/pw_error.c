@@ -38,6 +38,7 @@ static void PW_PushError_( PW_ErrorCode errorCode, const char *fmt, const char *
   g_errorCount++;
 }
 
+// TODO: Return non-zero on success not error code
 int PW_GetError( PW_Error *error )
 {
   if ( error == NULL )
