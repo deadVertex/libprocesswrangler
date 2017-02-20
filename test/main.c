@@ -109,6 +109,15 @@ TEST GetErrorReturnsErrorsInOrderTheyWereRaised()
   PASS();
 }
 
+TEST GetSystemNumCoresAndMemory()
+{
+  PW_SystemInfo systemInfo;
+  ASSERT_EQm( "Failed to retrieve system info", PW_ERROR_NONE, PW_GetSystemInfo( &systemInfo ) );
+  ASSERT( systemInfo.numCores > 0 );
+  ASSERT( systemInfo.totalPhysicalMemory > 0 );
+  ASSERT( systemInfo.usedPhysicalMemory > 0 );
+}
+
 /* Test runner */
 GREATEST_MAIN_DEFS();
 
@@ -129,6 +138,7 @@ int main( int argc, char **argv )
   RUN_TEST( ErrorContainsErrorMessage );
   RUN_TEST( GetErrorDecrementsErrorCount );
   RUN_TEST( GetErrorReturnsErrorsInOrderTheyWereRaised );
+  RUN_TEST( GetSystemNumCoresAndMemory );
 
   GREATEST_MAIN_END();
 }

@@ -8,6 +8,22 @@
 #include <Windows.h>
 #include <TlHelp32.h>
 #include <Psapi.h>
+#include <Pdh.h>
+
+#define PWI_MAX_CORES 256
+
+typedef struct 
+{
+  PDH_HQUERY cpuQuery;
+  PDH_HCOUNTER cpuUsageCounter;
+  PDH_HCOUNTER coreUsageCounter[ PWI_MAX_CORES ];
+
+  uint32_t numCores;
+  uint64_t totalPhysicalMemory;
+  uint64_t usedPhysicalMemory;
+  double cpuUsage;
+  double coreUsage[ PWI_MAX_CORES ];
+} SystemInfo;
 
 typedef struct
 {
@@ -18,11 +34,15 @@ typedef struct
   char name[ PW_PROCESS_NAME_LENGTH ];
 } PW_ProcessInfo;
 
+static SystemInfo g_systemInfo;
 static PW_ProcessInfo g_processes[ PW_MAX_PROCESSES ];
 static uint32_t g_numProcesses;
 
+static int InitializeSystemInfo();
+
 int PW_Initialize( void )
 {
+  InitializeSystemInfo();
   return 0;
 }
 
@@ -210,5 +230,85 @@ int PW_KillProcesses( uint32_t *processIds, uint32_t count )
     }
   }
 
+  return result;
+}
+
+static void DeinitStats()
+{
+  PdhCloseQuery( g_systemInfo.cpuQuery );
+  for ( uint32_t i = 0; i < g_systemInfo.numCores; ++i )
+  {
+    PdhCloseQuery( g_systemInfo.coreUsageCounter[ i ] );
+  }
+}
+
+static int InitializeSystemInfo()
+{
+  SYSTEM_INFO systemInfo;
+  GetSystemInfo( &systemInfo );
+  g_systemInfo.numCores = systemInfo.dwNumberOfProcessors;
+
+  // TODO: Check for failure
+  PdhOpenQuery( NULL, NULL, &g_systemInfo.cpuQuery );
+  // TODO: Handle localization issues
+  if ( PdhAddCounter( g_systemInfo.cpuQuery, "\\Processor(_Total)\\% Processor Time", NULL, &g_systemInfo.cpuUsageCounter ) != ERROR_SUCCESS )
+  {
+    PW_PushError( PW_ERROR_INTERNAL, "Failed to add counter for CPU usage");
+    DeinitStats();
+    return PW_ERROR_INTERNAL;
+  }
+  for ( uint32_t i = 0; i < g_systemInfo.numCores; ++i )
+  {
+    char buffer[ 120 ];
+    sprintf( buffer, "\\Processor(%u)\\%% Processor Time", i );
+    if ( PdhAddCounter( g_systemInfo.cpuQuery, buffer, NULL, &g_systemInfo.coreUsageCounter[ i ] ) != ERROR_SUCCESS )
+    {
+      PW_PushError( PW_ERROR_INTERNAL, "Failed to add counter for core %u", i );
+      DeinitStats();
+      return PW_ERROR_INTERNAL;
+    }
+  }
+  PdhCollectQueryData( g_systemInfo.cpuQuery );
+
+  return PW_ERROR_NONE;
+}
+
+static void UpdateSystemInfo()
+{
+  MEMORYSTATUSEX memInfo;
+  memInfo.dwLength = sizeof( MEMORYSTATUSEX );
+  GlobalMemoryStatusEx( &memInfo );
+  g_systemInfo.totalPhysicalMemory = memInfo.ullTotalPhys;
+  g_systemInfo.usedPhysicalMemory = memInfo.ullTotalPhys - memInfo.ullAvailPhys;
+
+  // Apparently we should wait a minimum of 1 second between Pdh samples
+  PDH_FMT_COUNTERVALUE value;
+  PdhCollectQueryData( g_systemInfo.cpuQuery );
+  PdhGetFormattedCounterValue( g_systemInfo.cpuUsageCounter, PDH_FMT_DOUBLE, NULL, &value );
+  g_systemInfo.cpuUsage = value.doubleValue;
+  for ( uint32_t i = 0; i < g_systemInfo.numCores; ++i )
+  {
+    PDH_FMT_COUNTERVALUE coreValue;
+    PdhGetFormattedCounterValue( g_systemInfo.coreUsageCounter[ i ], PDH_FMT_DOUBLE, NULL, &coreValue );
+    g_systemInfo.coreUsage[ i ] = coreValue.doubleValue;
+  }
+}
+
+int PW_GetSystemInfo( PW_SystemInfo *systemInfo )
+{
+  int result = PW_ERROR_NONE;
+  if ( systemInfo )
+  {
+    UpdateSystemInfo();
+    systemInfo->cpuUsage = g_systemInfo.cpuUsage;
+    systemInfo->numCores = g_systemInfo.numCores;
+    systemInfo->totalPhysicalMemory = g_systemInfo.totalPhysicalMemory;
+    systemInfo->usedPhysicalMemory = g_systemInfo.usedPhysicalMemory;
+  }
+  else
+  {
+    PW_PushError( PW_ERROR_INVALID_ARGUMENT, "Pointer to systemInfo is NULL." );
+    result = PW_ERROR_INVALID_ARGUMENT;
+  }
   return result;
 }

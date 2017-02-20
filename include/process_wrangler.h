@@ -29,8 +29,18 @@ SOFTWARE.
 
 #include "pw_error.h"
 
+// TODO: Make max processes an internal constant
 #define PW_MAX_PROCESSES 0x8000
 #define PW_PROCESS_NAME_LENGTH 260
+
+typedef struct 
+{
+  uint32_t numCores;
+  uint64_t totalPhysicalMemory;
+  uint64_t usedPhysicalMemory;
+  float cpuUsage;
+
+} PW_SystemInfo;
 
 typedef struct
 {
@@ -46,5 +56,6 @@ SYMBOL_EXPORT extern int PW_UpdateProcessList( void );
 SYMBOL_EXPORT extern int PW_GetProcessList( PW_Process *processes, uint32_t count );
 SYMBOL_EXPORT extern void PW_ClearProcessList();
 SYMBOL_EXPORT extern int PW_KillProcesses( uint32_t *processIds, uint32_t count );
+SYMBOL_EXPORT extern int PW_GetSystemInfo( PW_SystemInfo *systemInfo );
 
 #endif /* __PROCESS_WRANGLER_H__ */
